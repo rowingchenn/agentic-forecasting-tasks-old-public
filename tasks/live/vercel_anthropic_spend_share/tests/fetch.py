@@ -9,8 +9,9 @@ with the AF_* schedule merged in, and turns the results into archived files.
                               UTC day, the day of the week, and Kalshi's market median one
                               cycle before B's
     truth(today, spec)        every day's share once a full day has passed since it ended
-    baseline(run_date, spec)  the median of Kalshi's KXANTHVSPEND market on each target date
-                              that has one, as it stood at the cutoff, read the next day
+    baseline(run_date, spec)  Kalshi's KXANTHVSPEND market on the nearest even target date
+                              as it stood at the cutoff, read the next day: every contract's
+                              quotes, and the median they imply when they bracket it
 
 The leaderboard's days are taken to be UTC days; Vercel does not document them. Vercel's
 export endpoint serves every day from 2025-10-01 by date range, and its latest row is the
@@ -75,7 +76,8 @@ METHOD = (
     "the midpoint of the best bid and ask in its last one-minute candle by then, if both are "
     "quoted and at most max_quote_spread apart; the prices are made non-increasing by pooling "
     "adjacent violators and joined linearly between quoted strikes; the point is the median, "
-    "where they cross one half, if the quoted strikes bracket it"
+    "where they cross one half, if the quoted strikes bracket it; only the nearest even target "
+    "date is read, and every contract's quotes are kept in readings[date].ladder"
 )
 USER_AGENT = "agentic-forecasting/1.0"
 CACHE = (
@@ -580,15 +582,26 @@ def kalshi_as_seen(
     return seen, taken
 
 
+def nearest_even(run_date: date, horizons: list[int]) -> date | None:
+    """The first target date with an even day of the month, the one KXANTHVSPEND event of
+    the window that is open and traded at the cutoff: 1 day ahead on an odd run date, 2 on an
+    even one, 3 on the 30th of a 31-day month. None if no target date is even."""
+    days = sorted(run_date + timedelta(days=h) for h in horizons)
+    return next((day for day in days if day.day % 2 == 0), None)
+
+
 def baseline(run_date: date, spec: dict) -> dict:
-    """The median of Kalshi's market on each target date that has a KXANTHVSPEND event, as it
-    stood at the cutoff, read the next day from its one-minute candlesticks. Kalshi lists even
-    dates only, each from about four days ahead, so normally two of the seven target dates
-    have one. Empty before the cutoff; a date without an event, or whose quotes do not
-    bracket the median, has no forecast, and the reason is printed for the daily log too."""
+    """Kalshi's market on the nearest even target date (nearest_even) as it stood at the
+    cutoff, read the next day from its one-minute candlesticks. Kalshi lists even dates only,
+    each from about four days ahead; the farther even date of the window opens too close to
+    the cutoff to be traded, so it is not read. The reading keeps every contract's bid, ask
+    and midpoint (`readings[date].ladder`), from which each contract can be scored on its own;
+    the forecast is the median they imply, if they bracket it. Empty before the cutoff; a
+    reading without a median gives no forecast, and the reason is printed for the daily log
+    too."""
     timezone, clock = spec["schedule"]["timezone"], spec["schedule"]["cutoff"]
     cutoff = _local(run_date, clock, timezone)
-    days = [run_date + timedelta(days=h) for h in spec["horizons"]]
+    day = nearest_even(run_date, spec["horizons"])
     source = {
         "report": f"Kalshi {SERIES}, quotes at {clock} ET on {run_date.isoformat()}",
         "posted": None,
@@ -597,28 +610,29 @@ def baseline(run_date: date, spec: dict) -> dict:
     if _now() < cutoff:
         print(f"note: no Kalshi baseline for {run_date}: before the cutoff", file=sys.stderr)
         return {"source": source | {"reason": "before the cutoff"}, "forecasts": []}
+    if day is None:
+        reason = "no target date is even; Kalshi lists this series for even dates only"
+        print(f"note: no Kalshi baseline for {run_date}: {reason}", file=sys.stderr)
+        return {"source": source | {"reason": reason}, "forecasts": []}
     spread = spec["baseline"]["max_quote_spread"]
-    taken = readings([(day, cutoff) for day in days], spread)
-    forecasts, read = [], {}
-    for day, reading in zip(days, taken, strict=True):
-        if reading is None:
-            even = "; Kalshi lists this series for even dates only" if day.day % 2 else ""
-            reading = {"point": None, "reason": f"{event_ticker(day)} is not listed{even}"}
-        if reading["point"] is None:
-            print(
-                f"note: no Kalshi baseline for {day} on {run_date}: {reading['reason']}",
-                file=sys.stderr,
-            )
-        else:
-            forecasts.append({"target_date": day.isoformat(), "point": reading["point"]})
-        read[day.isoformat()] = reading
+    (reading,) = readings([(day, cutoff)], spread)
+    if reading is None:
+        reading = {"point": None, "reason": f"{event_ticker(day)} is not listed"}
+    forecasts = []
+    if reading["point"] is None:
+        print(
+            f"note: no Kalshi median for {day} on {run_date}: {reading['reason']}",
+            file=sys.stderr,
+        )
+    else:
+        forecasts.append({"target_date": day.isoformat(), "point": reading["point"]})
     return {
         "source": source
         | {
             "posted": cutoff.isoformat(),
             "method": METHOD,
             "max_quote_spread": spread,
-            "readings": read,
+            "readings": {day.isoformat(): reading},
             "contract_terms_url": CONTRACT_TERMS,
         },
         "forecasts": forecasts,
