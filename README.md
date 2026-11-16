@@ -197,7 +197,7 @@ Revise the taxonomy in the same pull request when a target fits no leaf.
 | `us_saturday_hog_slaughter` | US federally inspected hog slaughter on Saturdays (USDA AMS) | Fridays, cutoff 13:50 ET | 1 day | USDA estimate |
 | `us_weekly_corn_export_inspections` | US weekly corn inspected for export (metric tons, USDA FGIS) | Thursdays, cutoff 15:50 ET | 7 days | none |
 | `us_weekly_gasoline_price` | US weekly regular gasoline retail price (USD/gallon, EIA) | Thursdays, cutoff 13:50 ET | 4 and 11 days | none |
-| `vercel_anthropic_spend_share` | Anthropic's share of Vercel AI Gateway spend (%) | daily, cutoff 18:30 ET | 1–7 days | Kalshi market median, on the dates it lists (seen by agents) |
+| `vercel_anthropic_spend_share` | Anthropic's share of Vercel AI Gateway spend (%) | daily, cutoff 18:30 ET | 1–7 days | Kalshi market on the nearest even target date: contract quotes, and their median when bracketed (seen by agents) |
 | `wikipedia_ai_pageviews` | English Wikipedia "Artificial intelligence" daily user page views | daily, cutoff 13:45 UTC | 1–7 days | none |
 
 ## Adding a target
