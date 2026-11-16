@@ -265,7 +265,7 @@ def snapshot(run_date: date, spec: dict) -> dict:
     }
     kalshi_source = {"url": f"{KALSHI}/markets?series_ticker={SERIES}"}
     try:
-        kalshi, taken = kalshi_as_seen(index, target, last_observed, run_date, spec)
+        kalshi, taken = kalshi_as_seen(index, last_observed, run_date, spec)
         kalshi_source["readings"] = len(taken)
     except FAILURES as exc:
         kalshi = None
@@ -548,7 +548,6 @@ def readings(wanted: list[tuple[date, datetime]], spread: float) -> list[dict | 
 
 def kalshi_as_seen(
     index: pd.DatetimeIndex,
-    target: pd.Series,
     last_observed: pd.Timestamp,
     run_date: date,
     spec: dict,
@@ -557,8 +556,9 @@ def kalshi_as_seen(
     readings taken: for a past day, at the cutoff two days before it (the run day before the
     one whose first target date it is); for the window, at the previous run day's cutoff,
     carried forward to the days it does not reach (Kalshi opens an event about four days
-    ahead, for even dates only). A past day without a reading carries the day before's share,
-    a no-change forecast. The series is None if no day of the window has a reading."""
+    ahead, for even dates only). A day without a reading carries the latest reading before
+    it, and the days before the market's first reading take that reading. The series is None
+    if no day of the window has a reading."""
     timezone, clock = spec["schedule"]["timezone"], spec["schedule"]["cutoff"]
     wanted = []
     for d in index:
@@ -575,8 +575,10 @@ def kalshi_as_seen(
     taken = [r for r in taken if r]
     if seen[~past].isna().all():
         return None, taken
-    seen[past] = seen[past].fillna(target.shift(1)[past]).fillna(target[past])
-    seen[~past] = seen[~past].ffill().fillna(target[past].iloc[-1])
+    # Gaps take readings, never the target: filled with the day before's share, the history
+    # column was a copy of the target a day late, so the -expert TSFMs trusted it fully and
+    # then got one reading carried flat across the window (2026-11-16 review).
+    seen = seen.ffill().bfill()
     return seen, taken
 
 

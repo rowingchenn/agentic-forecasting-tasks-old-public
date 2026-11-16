@@ -8,7 +8,6 @@ from ale_verify import write
 
 TASK = json.loads(Path("/home/user/input/task.json").read_text())
 OUTPUT = Path("/home/user/output")
-COLLECTED = OUTPUT / "collected"
 
 
 def forecast_problems(data: object) -> list[str]:
@@ -53,44 +52,7 @@ def forecast_valid() -> dict:
     }
 
 
-def materials() -> tuple[dict, int]:
-    index = COLLECTED / "index.jsonl"
-    try:
-        lines = index.read_text().splitlines()
-    except OSError as exc:
-        return {"score": 0.0, "diagnostic": f"collected/index.jsonl is unreadable: {exc}"}, 0
-    root = COLLECTED.resolve()
-    count = 0
-    for number, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            return {"score": 0.0, "diagnostic": f"index.jsonl line {number} is not JSON"}, count
-        path, source = entry.get("path"), entry.get("source")
-        if not isinstance(path, str) or not isinstance(source, str) or not source.strip():
-            return {
-                "score": 0.0,
-                "diagnostic": f"index.jsonl line {number} needs path and source",
-            }, count
-        target = (root / path).resolve()
-        if root not in target.parents or not target.is_file():
-            return {
-                "score": 0.0,
-                "diagnostic": f"line {number}: {path} is not a file in collected/",
-            }, count
-        count += 1
-    return {"score": 1.0, "diagnostic": f"{count} materials listed"}, count
-
-
+# Only the forecast is checked. Agents are asked to save their materials for the offline
+# replay, but how they list them does not decide whether the forecast counts.
 forecast_result = forecast_valid()
-materials_result, material_count = materials()
-write(
-    {
-        "reward": (forecast_result["score"] + materials_result["score"]) / 2,
-        "forecast_valid": forecast_result,
-        "materials_valid": materials_result,
-        "materials": material_count,
-    }
-)
+write({"reward": forecast_result["score"], "forecast_valid": forecast_result})

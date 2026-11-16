@@ -114,9 +114,10 @@ what = """\
   before the one whose first target date it is); for the forecast window, at the \
   previous run day's cutoff, carried forward to the dates it does not reach. Kalshi \
   lists even dates only, from about four days ahead, so that reading covers at most the \
-  run date and the next three days. A past day without a reading (odd dates, days \
-  before the market began in late September 2026, quotes that do not bracket the \
-  median) carries the day before's share. Without a reading for any day of the window, \
+  run date and the next three days. A day without a reading (odd dates, quotes that \
+  do not bracket the median) carries the latest reading before it, and the days before \
+  the market began in late September 2026 take its first reading. Without a reading for \
+  any day of the window, \
   X_d has no such column. The reading at this run's cutoff, which is B, is not \
   included."""
 why = """\
